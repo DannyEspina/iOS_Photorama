@@ -22,23 +22,18 @@ class PhotosViewController: UIViewController, UICollectionViewDelegate {
         collectionView.dataSource = photoDataSource
         collectionView.delegate = self
         
+        updateDataSource()
+        
         segmentControl.selectedSegmentIndex = 0
         segmentControl.addTarget(self, action: #selector(self.photoTypeChanged(_:)), for: .valueChanged)
 
         store.fetchPhotos(index: segmentControl.selectedSegmentIndex){
             (photosResult) -> Void in
             
-            switch photosResult {
-            case let .success(photos):
-                print("Successfully found \(photos.count) photos.")
-                self.photoDataSource.photos = photos
-            case let .failure(error):
-                print("Error fetching interesting photos: \(error)")
-                self.photoDataSource.photos.removeAll()
-            }
-            self.collectionView.reloadSections(IndexSet(integer: 0))
+            self.updateDataSource()
         }
-}
+        
+    }
     override func prepare(for segue: UIStoryboardSegue, sender: Any?) {
         switch segue.identifier {
         case "showPhoto"?:
@@ -89,16 +84,30 @@ class PhotosViewController: UIViewController, UICollectionViewDelegate {
             }
         }
     }
+    
+    private func updateDataSource() {
+        store.fetchAllPhotos {
+            (photosResult) in
+            
+            switch photosResult {
+            case let .success(photos):
+                self.photoDataSource.photos = photos
+            case .failure:
+                self.photoDataSource.photos.removeAll()
+            }
+            self.collectionView.reloadSections(IndexSet(integer: 0))
+        }
+    }
 }
 //extension PhotosViewController: UICollectionViewDelegateFlowLayout {
 //    func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> CGSize {
 //        let collectionViewWidth = collectionView.bounds.size.width
 //        let numberOfItemsPerRow: CGFloat = 4
 //        let itemWidth = collectionViewWidth / numberOfItemsPerRow
-//        
+//
 //        return CGSize(width: itemWidth, height: itemWidth)
 //    }
-//    
+//
 //    override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
 //        collectionView.reloadData()
 //    }
