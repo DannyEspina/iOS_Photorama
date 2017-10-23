@@ -22,6 +22,8 @@ enum PhotosResult {
 }
 class PhotoStore {
     
+    let imageStore = ImageStore()
+    
     private let session: URLSession = {
         let config = URLSessionConfiguration.default
         return URLSession(configuration: config)
@@ -41,7 +43,7 @@ class PhotoStore {
             
             if let httpStatus = response as? HTTPURLResponse {
                 //check for http errors
-                print("fetchInterestingPhotos")
+                print("fetchPhotos")
                 print("statusCode is \(httpStatus.statusCode)")
                 print("Header fields are \(httpStatus.allHeaderFields)")
             }
@@ -54,27 +56,6 @@ class PhotoStore {
         }
         task.resume()
     }
-//    func fetchRecentPhotos(completion: @escaping (PhotosResult) -> Void) {
-//        let url = FlickrAPI.recentPhotosURL
-//        let request = URLRequest(url: url)
-//        let task = session.dataTask(with: request) {
-//            (data, response, error) -> Void in
-//
-//            if let httpStatus = response as? HTTPURLResponse {
-//                //check for http errors
-//                print("fetchRecentPhotos")
-//                print("statusCode is \(httpStatus.statusCode)")
-//                print("Header fields are \(httpStatus.allHeaderFields)")
-//            }
-//
-//            let result = self.processPhotoRequest(data: data, error: error)
-//            OperationQueue.main.addOperation {
-//                completion(result)
-//            }
-//
-//        }
-//        task.resume()
-//    }
     private func processPhotoRequest(data: Data?, error: Error?) -> PhotosResult {
         guard let jsonData = data else {
             return .failure(error!)
@@ -83,6 +64,14 @@ class PhotoStore {
         return FlickrAPI.photos(fromJSON: jsonData)
     }
     func fetchImage(for photo: Photo, completion: @escaping (ImageResult) -> Void) {
+        
+        let photoKey = photo.photoID
+        if let image = imageStore.image(forKey: photoKey) {
+            OperationQueue.main.addOperation {
+                completion(.success(image))
+            }
+            return
+        }
         let photoURL = photo.remoteURL
         let request = URLRequest(url: photoURL)
         
@@ -96,6 +85,9 @@ class PhotoStore {
                 print("Header fields are \(httpStatus.allHeaderFields)")
             }
             let result = self.processImageRequest(data: data, error: error)
+            if case let .success(image) = result {
+                self.imageStore.setImage(image, forKey: photoKey)
+            }
             OperationQueue.main.addOperation {
                 completion(result)
             }
