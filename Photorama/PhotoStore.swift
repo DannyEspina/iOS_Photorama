@@ -13,12 +13,15 @@ enum ImageResult {
     case success(UIImage)
     case failure(Error)
 }
-
 enum PhotoError: Error {
     case imageCreationError
 }
 enum PhotosResult {
     case success([Photo])
+    case failure(Error)
+}
+enum TagsResult {
+    case success([Tag])
     case failure(Error)
 }
 class PhotoStore {
@@ -57,29 +60,47 @@ class PhotoStore {
                 print("statusCode is \(httpStatus.statusCode)")
                 print("Header fields are \(httpStatus.allHeaderFields)")
             }
-            
-            var result = self.processPhotoRequest(data: data, error: error)
-            
-            if case .success = result {
-                do {
-                    try self.persistentContainer.viewContext.save()
-                } catch let error {
-                    result = .failure(error)
+           
+            self.processPhotoRequest(data: data, error: error) {
+                (result) in
+                
+                OperationQueue.main.addOperation {
+                    completion(result)
                 }
-            }
-            OperationQueue.main.addOperation {
-                completion(result)
             }
             
         }
         task.resume()
     }
-    private func processPhotoRequest(data: Data?, error: Error?) -> PhotosResult {
+    private func processPhotoRequest(data: Data?, error: Error?, completion: @escaping (PhotosResult) -> Void) {
         guard let jsonData = data else {
-            return .failure(error!)
+            completion(.failure(error!))
+            return
         }
         
-        return FlickrAPI.photos(fromJSON: jsonData, into: persistentContainer.viewContext)
+        persistentContainer.performBackgroundTask {
+            (context) in
+            
+            let result = FlickrAPI.photos(fromJSON: jsonData, into: context)
+            
+            do {
+                try context.save()
+            } catch {
+                print("Error saving to Core Data: \(error).")
+                completion(.failure(error))
+                return
+            }
+            
+            switch result {
+            case let .success(photos):
+                let photoIDs = photos.map { return $0.objectID }
+                let viewContext = self.persistentContainer.viewContext
+                let viewContextPhotos = photoIDs.map { return viewContext.object(with: $0) } as! [Photo]
+                completion(.success(viewContextPhotos))
+            case .failure:
+                completion(result)
+            }
+        }
     }
     func fetchImage(for photo: Photo, completion: @escaping (ImageResult) -> Void) {
         
@@ -140,6 +161,21 @@ class PhotoStore {
             do {
                 let allPhotos = try viewContext.fetch(fetchRequest)
                 completion(.success(allPhotos))
+            } catch {
+                completion(.failure(error))
+            }
+        }
+    }
+    func fetchAllTags(completion: @escaping (TagsResult) -> Void) {
+        let fetchRequest: NSFetchRequest<Tag> = Tag.fetchRequest()
+        let sortByName = NSSortDescriptor(key: #keyPath(Tag.name), ascending: true)
+        fetchRequest.sortDescriptors = [sortByName]
+        
+        let viewContext = persistentContainer.viewContext
+        viewContext.perform {
+            do {
+                let allTags = try fetchRequest.execute()
+                completion(.success(allTags))
             } catch {
                 completion(.failure(error))
             }
